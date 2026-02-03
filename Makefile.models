@@ -1,0 +1,28 @@
+
+MPATH=/mnt/data/ondra/sensetrends/models/
+CPATH=/mnt/data/ondra/registry/
+#COMMON=--threads 32 --min-freq 5 --save-threshold 0.0002 --prototypes 10
+COMMON=--threads 32 --min-freq 10
+CMD=nice -n 15 /usr/bin/time -o $$@.time ./learn
+
+.DEFAULT_GOAL = all
+.SECONDARY:
+
+define CALCULATE_MODEL
+$(MPATH)$(1).$(2).e$(3).d$(4).w10.a$(5).p$(6):
+	$(CMD) $(CPATH)/$(1) $(2) $$@ $(COMMON) --epochs $(3) --window 10 --dim $(4) --alpha 0.$(5) --prototypes $(6) &> $$@.log
+ALL_MODELS+=$(MPATH)$(1).$(2).e$(3).d$(4).w10.a$(5).p$(6)
+endef
+
+$(foreach attr,lempos,\
+$(foreach epoch,3 1,\
+$(foreach dim,64,\
+$(foreach alpha,05 1 15,\
+$(foreach prototypes,10 20,\
+$(foreach corpus,trends_en_first_20250404 trends_cs_devirt_20250408,\
+	$(eval $(call CALCULATE_MODEL,$(corpus),$(attr),$(epoch),$(dim),$(alpha),$(prototypes)))\
+))))))
+
+.PHONY: all
+all: $(ALL_MODELS)
+

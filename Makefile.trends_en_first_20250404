@@ -1,0 +1,27 @@
+#M=/var/tmp/xherman1/models/entente20_tt31_1_sample
+M=/mnt/data/ondra/sensetrends/models/trends_en_first_20250404
+#C=/home/xherman1/corpora/registry/ententen20_tt31_1_sample
+C=/mnt/data/ondra/registry/trends_en_first_20250404
+#COMMON=--threads 32 --min-freq 5 --save-threshold 0.0002 --prototypes 10
+COMMON=--threads 32 --min-freq 10 --prototypes 10
+CMD=nice -n 15 /usr/bin/time -o $$@.time ./learn
+
+.DEFAULT_GOAL = all
+.SECONDARY:
+
+define CALCULATE_MODEL
+$(M).$(1).e$(2).d$(3).w10.a$(4):
+	$(CMD) $(C) $(1) $$@ $(COMMON) --epochs $(2) --window 10 --dim $(3) --alpha 0.$(4) &> $$@.log
+ALL_MODELS+=$(M).$(1).e$(2).d$(3).w10.a$(4)
+endef
+
+$(foreach attr,lemma word lempos,\
+$(foreach epoch,2 1,\
+$(foreach dim,64 128,\
+$(foreach alpha,05 03 1,\
+	$(eval $(call CALCULATE_MODEL,$(attr),$(epoch),$(dim),$(alpha)))\
+))))
+
+.PHONY: all
+all: $(ALL_MODELS)
+
