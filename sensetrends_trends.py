@@ -28,38 +28,30 @@ def normalize_headword_df(df, norm):
     if not scols:
         raise ValueError("No sense columns (s0, s1, ...) found.")
 
-    out = df.loc[:, scols].copy().astype(float)
-    if "epoch" in df.columns:
-        out["epoch"] = df["epoch"]
-    else:
-        out["epoch"] = np.arange(len(df), dtype=int)
+    epoch = df["epoch"] if "epoch" in df.columns else pd.Series(range(len(df)), name="epoch", index=df.index)
+    freqs = df[scols].astype(float)
 
-    if norm in ("en", "gn"):
-        if "norm" not in df.columns:
-            raise ValueError("Normalization requires a 'norm' column.")
-        out.loc[:, scols] = out.loc[:, scols].div(df.loc[:, "norm"], axis=0)
+    if norm == "sr":
+        res = freqs.div(freqs.sum(axis=1), axis=0)
+        return res.fillna(0.0).assign(epoch=epoch)
+
+    if "norm" not in df.columns:
+        raise ValueError("Normalizations 'en' and 'gn' require a 'norm' column.")
+
+    normed = freqs.div(df["norm"].astype(float), axis=0)
 
     if norm == "en":
-        E = len(out)
-        for c in scols:
-            series = out[c].to_numpy(dtype=float, copy=False)
-            ssum = float(np.nansum(series))
-            if ssum == 0.0 or np.isnan(ssum):
-                continue
-            out[c] = series * (E / ssum)
+        E = len(normed)
+        scales = (E / normed.sum(axis=0)).replace([np.inf, -np.inf], np.nan)
+        ret = normed.mul(scales, axis=1)
     elif norm == "gn":
-        S = len(scols)
-        E = len(out)
-        denom = float(np.nansum(out.loc[:, scols].to_numpy(dtype=float, copy=False)))
-        if denom != 0.0 and not np.isnan(denom):
-            out.loc[:, scols] = out.loc[:, scols] * ((S * E) / denom)
-    elif norm == "sr":
-        denom = out.loc[:, scols].sum(axis=1)
-        out.loc[:, scols] = out.loc[:, scols].div(denom, axis=0)
+        S, E = len(scols), len(normed)
+        denom = float(normed.to_numpy().sum())
+        ret = normed * ((S * E) / denom)
     else:
         raise ValueError(f"Unknown normalization: {norm!r}")
 
-    return out.fillna(0.0)
+    return ret.fillna(0.0).assign(epoch=epoch)
 
 
 def compute_trends_for_headword(df, norm, xs=None):

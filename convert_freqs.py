@@ -5,9 +5,6 @@ import csv
 from pathlib import Path
 import sys
 
-REPO_ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(REPO_ROOT))
-
 import pandas as pd
 
 from read_df import read_df
@@ -73,18 +70,15 @@ def convert_tsv(path):
 
 def main():
     ap = argparse.ArgumentParser(description="Convert old sensetrends frequency formats into the new TSV format.")
-    ap.add_argument("--in", dest="inp", required=True, help="Input file (old block or TSV).")
-    ap.add_argument("--out", required=True, help="Output TSV (hw, epoch, s0..sN, norm).")
+    ap.add_argument("infile", help="Input file (old block or TSV).")
     args = ap.parse_args()
 
-    if is_block_format(args.inp):
-        df = convert_block(args.inp)
+    if is_block_format(args.infile):
+        df = convert_block(args.infile)
     else:
-        df = convert_tsv(args.inp)
+        df = convert_tsv(args.infile)
 
-    Path(args.out).parent.mkdir(parents=True, exist_ok=True)
-    df.to_csv(args.out, sep="\t", index=False, quoting=3)
-    return 0
+    df.to_csv(sys.stdout, sep="\t", index=False, quoting=3)
 
 
 if __name__ == "__main__":
