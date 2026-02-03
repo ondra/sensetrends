@@ -124,8 +124,8 @@ def read_df(path):
     if "hw" not in df.columns:
         raise ValueError(f"{path}: missing required column 'hw'")
 
-    if "epoch" in df.columns:
-        df = df.sort_values(["hw", "epoch"], kind="stable")
+#    if "epoch" in df.columns:
+#        df = df.sort_values(["hw", "epoch"], kind="stable")
 
     out = []
     for _, g in df.groupby("hw", sort=False):

@@ -10,11 +10,6 @@ import pandas as pd
 from read_df import read_df
 
 
-def is_block_format(path):
-    with Path(path).open("r", encoding="utf-8", errors="replace") as f:
-        return f.readline().startswith("HW ")
-
-
 def convert_block(path):
     dfs = read_df(path)
     if not dfs:
@@ -48,36 +43,12 @@ def convert_block(path):
     return pd.concat(out, ignore_index=True).sort_values(["hw", "epoch"], kind="stable")
 
 
-def convert_tsv(path):
-    df = pd.read_csv(path, sep="\t", quoting=csv.QUOTE_NONE, engine="python")
-
-    if "hw" not in df.columns or "epoch" not in df.columns:
-        raise SystemExit("Expected TSV with columns: hw, epoch, s0..sN, norm")
-
-    if "norm" not in df.columns:
-        if "n" in df.columns:
-            df = df.rename(columns={"n": "norm"})
-        else:
-            raise SystemExit("Expected a 'norm' column (or legacy 'n').")
-
-    scols = sorted([c for c in df.columns if isinstance(c, str) and c.startswith("s") and c[1:].isdigit()], key=lambda x: int(x[1:]))
-    if not scols:
-        raise SystemExit("No sense columns found (s0..sN).")
-
-    keep = ["hw", "epoch"] + scols + ["norm"]
-    return df.loc[:, keep].sort_values(["hw", "epoch"], kind="stable")
-
-
 def main():
     ap = argparse.ArgumentParser(description="Convert old sensetrends frequency formats into the new TSV format.")
     ap.add_argument("infile", help="Input file (old block or TSV).")
     args = ap.parse_args()
 
-    if is_block_format(args.infile):
-        df = convert_block(args.infile)
-    else:
-        df = convert_tsv(args.infile)
-
+    df = convert_block(args.infile)
     df.to_csv(sys.stdout, sep="\t", index=False, quoting=3)
 
 
