@@ -1,0 +1,23 @@
+# Optional local overrides for Makefile.models / Makefile.wl.
+# Copy to config.mk and adjust for your environment.
+#
+# cp config.mk.example config.mk
+
+# Model training (Makefile.models)
+# MPATH=/path/to/models/
+# CPATH=/path/to/registry/
+# LEARN=./learn
+# TIME=/usr/bin/time
+# NICE=nice -n 15
+# THREADS=32
+# MIN_FREQ=10
+
+# Wordlist + sensing (Makefile.wl)
+# MANATEE_REGISTRY=/path/to/registry/
+# CORP=trends_en_first_20250404
+# MODEL=$(CORP).lempos.e1.d64.w10.a1
+# SENSETRENDS=./sensetrends
+# NTHREADS=32
+# SKIP_FEED=doc.feed:https://vetexplainspets.com/feed/
+# MODELS_DIR=/path/to/models/
+

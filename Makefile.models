@@ -1,9 +1,17 @@
 
-MPATH=/mnt/data/ondra/sensetrends/models/
-CPATH=/mnt/data/ondra/registry/
+-include config.mk
+
+MPATH ?= /mnt/data/ondra/sensetrends/models/
+CPATH ?= /mnt/data/ondra/registry/
+LEARN ?= ./learn
+TIME ?= /usr/bin/time
+NICE ?= nice -n 15
+THREADS ?= 32
+MIN_FREQ ?= 10
+
 #COMMON=--threads 32 --min-freq 5 --save-threshold 0.0002 --prototypes 10
-COMMON=--threads 32 --min-freq 10
-CMD=nice -n 15 /usr/bin/time -o $$@.time ./learn
+COMMON ?= --threads $(THREADS) --min-freq $(MIN_FREQ)
+CMD = $(NICE) $(TIME) -o $$@.time $(LEARN)
 
 .DEFAULT_GOAL = all
 .SECONDARY:
@@ -25,4 +33,3 @@ $(foreach corpus,trends_en_first_20250404 trends_cs_devirt_20250408,\
 
 .PHONY: all
 all: $(ALL_MODELS)
-

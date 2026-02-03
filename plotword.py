@@ -16,7 +16,10 @@ def label_years(fromyearmonth, epochs=None, nepochs=None, stride=1):
             if mm == 13:
                 mm = 1
                 yy += 1
-    if nepochs: epochs = list(range(epochs))
+    if epochs is None:
+        if nepochs is None:
+            raise ValueError("label_years(): provide epochs or nepochs")
+        epochs = list(range(nepochs))
     return tuple(zip(*[(i, ym) for (i, ym) in zip(epochs, gen_ym())][::stride]))
 
 def reorderlabels(df):
@@ -30,16 +33,13 @@ def reorderlabels(df):
     return [c for c, s in labels_slopes_srt]
 
 def plotdf(df, fname="", usetex=False, fromyearmonth=(2023,4), stride=None, kind='stackbars', reorder=True, interp=None, ifactor=10, sensenames=None, model=None):
-    plt.rcParams.setdefault('font.serif')
-    plt.rcParams.setdefault('font.family')
-    plt.rcParams.setdefault('text.usetex')
-
-    if usetex:
-        plt.rcParams.update({
-            "text.usetex": False,
-            "font.family": "sans-serif",
+    plt.rcParams.update(
+        {
+            "text.usetex": bool(usetex),
+            "font.family": "sans-serif" if not usetex else "serif",
             "font.serif": ["Computer Modern Roman"],
-        })
+        }
+    )
 
     fig_width, fig_height = 8, 3  # fixed inches
     fig = plt.figure(figsize=(fig_width, fig_height))
@@ -61,7 +61,7 @@ def plotdf(df, fname="", usetex=False, fromyearmonth=(2023,4), stride=None, kind
     ax.set_frame_on(False)
     ax.set_yticks([])
     if stride == None:
-        stride = int(len(df)/25)
+        stride = max(1, int(len(df) / 25))
     epochs = df.index if 'epoch' not in df.columns else df.epoch
     xtickposs, xticklabels = label_years(fromyearmonth, epochs=epochs, stride=stride)
     ax.set_xticks(xtickposs, xticklabels, rotation=60)
@@ -199,7 +199,7 @@ def plotx(df, fname="", usetex=False, fromyearmonth=(2023,4), stride=None, sense
     xs = xsorig.copy()
     xs = np.linspace(min(xs), max(xs), len(xs)*ifactor)
     if stride == None:
-        stride = int(len(df)/10)
+        stride = max(1, int(len(df) / 10))
 
     cols = [col for col in df.columns if col.startswith("s")]
 
@@ -227,7 +227,7 @@ def plotx(df, fname="", usetex=False, fromyearmonth=(2023,4), stride=None, sense
     if reorder:
         labels_slopes = []
         for label in goodlabels:
-            p, s = slope.linreg(range(len(df[label])), df[label])
+            s, p = slope.linreg(range(len(df[label])), df[label])
             labels_slopes.append((label, s))
         labels_slopes_srt = sorted(labels_slopes, key=lambda s: s[1], reverse=True)
         goodlabels = [c for c, s in labels_slopes_srt][::-1]
