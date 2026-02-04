@@ -65,8 +65,7 @@ def compute_trends_for_headword(df, norm, xs=None):
     ndf = normalize_headword_df(df, norm)
     scols = [c for c in ndf.columns if c.startswith("s")]
 
-    if xs is None:
-        xs = ndf["epoch"].tolist()
+    xs = list(range(len(ndf)))
 
     out = []
     for c in scols:
@@ -83,7 +82,7 @@ def compute_trends_for_headword(df, norm, xs=None):
 
 
 def _read_freqs_tsv(path):
-    return pd.read_csv(path, sep="\t", quoting=csv.QUOTE_NONE, engine="python")
+    return pd.read_csv(path, sep="\t", quoting=csv.QUOTE_NONE)
 
 
 def compute_trends_df(df, norm, min_epoch=None):
@@ -97,12 +96,10 @@ def compute_trends_df(df, norm, min_epoch=None):
     if min_epoch is not None:
         df = df[df["epoch"] >= min_epoch]
 
-    df = df.copy()
     hw_rank = {hw: i for i, hw in enumerate(pd.unique(df["hw"]))}
 
     recs = []
     for hw, g in df.groupby("hw", sort=False):
-        g = g.sort_values("epoch", kind="stable")
         g = g.set_index("hw", drop=True)
         recs.extend(compute_trends_for_headword(g, norm))
 
