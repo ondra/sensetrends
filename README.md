@@ -78,6 +78,26 @@ plotdf(ndf, fname="agentic-j.pdf")
 | `name_senses_llm.py` | LLM-based sense naming from concordances |
 | `scripts/filter_trends_tsv.py` | Filter and sort trend output |
 
+## Citation
+
+If you use SenseTrends in your research, please cite:
+
+> Ondřej Herman and Pavel Rychlý. 2026. [Detecting Subtle Sense Shift with Polysemy-Aware Trends](https://aclanthology.org/2026.eacl-short.2/). In *Proceedings of the 19th Conference of the European Chapter of the Association for Computational Linguistics (Volume 2: Short Papers)*, pages 60–65, Rabat, Morocco. Association for Computational Linguistics.
+
+```bibtex
+@inproceedings{herman-rychly-2026-detecting,
+    title = "Detecting Subtle Sense Shift with Polysemy-Aware Trends",
+    author = "Herman, Ond{\v{r}}ej and Rychl{\'y}, Pavel",
+    booktitle = "Proceedings of the 19th Conference of the {E}uropean Chapter of the {A}ssociation for {C}omputational {L}inguistics (Volume 2: Short Papers)",
+    month = mar,
+    year = "2026",
+    address = "Rabat, Morocco",
+    publisher = "Association for Computational Linguistics",
+    pages = "60--65",
+    doi = "10.18653/v1/2026.eacl-short.2"
+}
+```
+
 ## License
 
 GPL-3.0
