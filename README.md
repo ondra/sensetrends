@@ -2,26 +2,41 @@
 
 Automatic detection of trending word senses in diachronic monitor corpora.
 
-Given a compiled diachronic corpus and a trained [Adaptive Skip-gram](https://github.com/ondra/adagram) model, SenseTrends computes per-sense frequency time series, estimates statistical trends, and ranks senses by the strength of their frequency change over time.
+Given a compiled diachronic corpus and a trained
+[Adaptive Skip-gram](https://github.com/ondra/adagram) model, SenseTrends
+computes per-sense frequency time series, estimates statistical trends, and
+ranks senses by the strength of their frequency change over time.
 
-See [EXAMPLE.md](EXAMPLE.md) for a complete walkthrough of the pipeline.
+The thesis appendix in [fi-pdflatex.tex](fi-pdflatex.tex) describes the same
+overall workflow. Some appendix command lines use older CLI syntax; the
+commands in this README match the current binaries in this repository.
 
-## Dependencies
+See [EXAMPLE.md](EXAMPLE.md) for the thesis-aligned walkthrough and a concrete
+single-feed smoke test using `https://www.ceskenoviny.cz/sluzby/rss/zpravy.php`.
 
-SenseTrends builds on several companion tools (prebuilt Linux/x86_64 binaries are included in this repository):
+## Companion tools
 
-| Tool | Repository | Purpose |
-|------|-----------|---------|
-| **adagram** | [ondra/adagram](https://github.com/ondra/adagram) | Adaptive Skip-gram model training (`learn`) and querying (`nearest`, `senseconc`, `sensefreqs`, `desamb`) |
-| **corp** | [ondra/corp](https://github.com/ondra/corp) | Manatee-compatible corpus compilation and access |
-| **pyslope** | [ondra/pyslope](https://github.com/ondra/pyslope) | Statistical trend estimation (Mann-Kendall, linear regression) |
-| **pyadagram** | [ondra/pyadagram](https://github.com/ondra/pyadagram) | Python bindings for adagram model queries |
+SenseTrends is the final ranking and inspection layer of a larger pipeline. The
+other repositories cited in the thesis are:
 
-External tools for corpus preparation (not included):
-- [FeedFetcher](https://github.com/ondra/feed_fetcher) for web feed crawling
+| Tool | Repository | Purpose | Bundled here |
+|------|------------|---------|--------------|
+| **feed_fetcher** | [ondra/feed_fetcher](https://github.com/ondra/feed_fetcher) | Crawl RSS/Atom feeds and download article HTML | No |
+| **corp** | [ondra/corp](https://github.com/ondra/corp) | Compile and query Manatee-compatible corpora | No |
+| **adagram** | [ondra/adagram](https://github.com/ondra/adagram) | Train/query Adaptive Skip-gram models (`learn`, `sensefreqs`, `senseconc`, `nearest`, `desamb`) | Core binaries are bundled |
+| **slope** | [ondra/slope](https://github.com/ondra/slope) | Rust trend-estimation library behind the Python extension | Indirectly, via `slope.so` |
+| **pyslope** | [ondra/pyslope](https://github.com/ondra/pyslope) | Python bindings for Mann-Kendall / linear-regression trend estimation | Yes, via `slope.so` |
+| **pyadagram** | [ondra/pyadagram](https://github.com/ondra/pyadagram) | Python bindings for AdaGram model queries | Yes, via `adagram.so` / `libpyadagram.so` |
+
+This repository contains the Python ranking/plotting code plus prebuilt
+Linux/x86_64 binaries and shared objects used by that layer.
+
+Additional external tools commonly used before corpus compilation:
+
 - [jusText](https://corpus.tools/) for boilerplate removal
+- `uninorm` and `unitok` from [corpus.tools](https://corpus.tools/) for text normalization and tokenization
 - [Onion](https://corpus.tools/) for deduplication
-- A lemmatizer/POS tagger for your target language
+- A lemmatizer / PoS tagger for the target language
 
 ## Setup
 
@@ -31,22 +46,51 @@ source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
+## Reality check
+
+Trend ranking needs a diachronic corpus with multiple epochs plus a trained
+sense model. A single fresh feed crawl is enough to validate acquisition and
+preprocessing, but not enough to produce stable trend estimates by itself.
+
 ## Quick start
 
-**1. Compute sense frequencies**
+The examples below assume you already have:
+
+- `corpus.conf`: compiled corpus configuration
+- `model.adagram`: trained AdaGram model
+- a diachronic structure attribute such as `doc.month` or `doc.date`
+
+### 1. Extract target headwords
+
+`lswl` returns `headword<TAB>frequency`, so strip the frequency column before
+feeding the list to `sensefreqs`.
 
 ```bash
-sensefreqs corpus.conf model.adagram lempos doc.month \
+lswl -l 100000 corpus.conf lempos > headwords_with_freqs.tsv
+cut -f1 headwords_with_freqs.tsv > headwords.txt
+```
+
+### 2. Compute sense frequencies
+
+Use `doc.month` for production corpora that expose monthly buckets. If your
+minimal corpus only has daily dates, replace it with `doc.date`.
+
+```bash
+./sensefreqs corpus.conf lempos doc.month model.adagram \
     --nthreads 16 < headwords.txt > sensed.tsv
 ```
 
-**2. Rank trending senses**
+`./sensetrends` provides the same CLI shape and is used by `Makefile.wl`.
+
+### 3. Rank trending senses
+
+`rank_trends.py` accepts one or more `sensefreqs` output files.
 
 ```bash
 python rank_trends.py sensed.tsv --method mk --norm en --out trends.tsv
 ```
 
-**3. Filter results**
+### 4. Filter results
 
 ```bash
 python scripts/filter_trends_tsv.py \
@@ -55,7 +99,7 @@ python scripts/filter_trends_tsv.py \
     --pattern '.*'
 ```
 
-**4. Plot a word**
+### 5. Plot a single headword
 
 ```python
 import pandas as pd
@@ -72,11 +116,12 @@ plotdf(ndf, fname="agentic-j.pdf")
 
 | File | Description |
 |------|-------------|
-| `rank_trends.py` | Rank sense trends from frequency files |
-| `sensetrends_trends.py` | Core trend computation and normalization |
-| `plotword.py` | Sense frequency visualization |
+| `rank_trends.py` | Rank sense trends from one or more TSV frequency files |
+| `sensetrends_trends.py` | Normalization and slope / p-value computation |
+| `plotword.py` | Sense-frequency visualization |
 | `name_senses_llm.py` | LLM-based sense naming from concordances |
-| `scripts/filter_trends_tsv.py` | Filter and sort trend output |
+| `scripts/filter_trends_tsv.py` | Filter and sort ranked trend output |
+| `Makefile.wl` | Local batch workflow for headword splitting, `sensefreqs`, and ranking |
 
 ## Citation
 
