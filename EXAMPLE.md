@@ -3,50 +3,54 @@
 This page provides a specific example of how a trending sense detection pipeline based on corpora crawled from RSS feeds might look like. The structure corresponds to the first appendix of my thesis [_Automatic Detection of Word Sense Shift_](https://is.muni.cz/auth/th/tlymm/), with some additional details and fixes.
 
 
-The initial starting point is a list of web feed URLs and the end result is a ranked list of
-trending senses.
+The initial starting point is a list of web feed URLs and the end result is a ranked list of trending senses.
 
 ## Prerequisites
 
+For the web crawl processing, you need:
+
+- `jusText` from [corpus.tools](https://corpus.tools) for boilerplate removal. Use the `corpus.tools` jusText package, forks use incompatible API.
+- Python `requests` library, from which some convenience header parsing routines are used.
+- `unitok` and `uninorm` from [corpus.tools](https://corpus.tools).
+- Optionally, a lemmatizer / PoS tagger for the target language.
+
+The SenseTrends scripts need:
+
+- `pandas` and `numpy` for efficient TSV I/O and data analysis functionality.
+- `matplotlib` and `scipy` for plotting support.
+
 ### 1. Python environment
 
-From the repository root:
+The Python dependencies are best installed in a `venv` to keep them separate from the rest of the system. From the repository root:
 
 ```bash
 python -m venv .venv
 source .venv/bin/activate
-pip install -r requirements.txt
+pip install pandas numpy
+# optional, for plotting support:
+pip install scipy matplotlib
+# for text extraction from FeedFetcher dumps
+pip install requests \
+    https://corpus.tools/raw-attachment/wiki/Downloads/justext-5.0.tar.gz
 ```
 
 Run the Python scripts from the repository root so they can import the bundled
 `slope.so` and `adagram.so` modules.
 
-### 2. Command availability
+### 2. Install `unitok`
 
-The examples below use command names such as `update`, `fetch`, `encodevert`,
-`mkdynattr`, `mktokencov`, `lswl`, `learn`, `sensefreqs`, `nearest`, and
-`senseconc`.
+```bash
+curl -fsSL https://corpus.tools/raw-attachment/wiki/Downloads/unitok-4.0.tar.gz \
+    -o "$WORKDIR/unitok-4.0.tar.gz"
+tar -xzf "$WORKDIR/unitok-4.0.tar.gz" -C "$WORKDIR"
+```
 
-If those commands are not installed globally, use the bundled binaries:
+### 3. Binary programs
+
+The examples below use unqualified command names of the tools. You can install them from the upstream repositories, or you can use the bundled binaries by adding them on PATH:
 
 ```bash
 export PATH="$PWD/bin/feed_fetcher:$PWD/bin/corp:$PWD/bin/adagram:$PWD/bin/onion:$PATH"
-```
-
-### 3. External preprocessing tools
-
-For the raw-web stages you still need:
-
-- `dump.py` from [ondra/feed_fetcher](https://github.com/ondra/feed_fetcher)
-- `jusText`
-- `uninorm`
-- `unitok`
-- optionally, a lemmatizer / PoS tagger for the target language
-
-Set this to your local `feed_fetcher` checkout:
-
-```bash
-export FEED_FETCHER_REPO=/path/to/feed_fetcher
 ```
 
 ### 4. Working variables
@@ -101,8 +105,7 @@ The fetched data are raw web pages in JSON Lines format. Extract the salient
 text with `dump.py` and `jusText`:
 
 ```bash
-python "$FEED_FETCHER_REPO/util/dump.py" \
-    --wordlist_lang Czech \
+dump.py --wordlist_lang English \
     "$OUT_PREFIX.jsonl" > "$RAW_TEXT"
 ```
 
@@ -110,14 +113,6 @@ If your local jusText install uses different stoplist names, use
 `--wordlist_file` instead of `--wordlist_lang`.
 
 ## Normalize and Tokenize the Text
-
-Download and unpack `unitok` from [Corpus Tools](https://corpus.tools) if needed:
-
-```bash
-curl -fsSL https://corpus.tools/raw-attachment/wiki/Downloads/unitok-4.0.tar.gz \
-    -o "$WORKDIR/unitok-4.0.tar.gz"
-tar -xzf "$WORKDIR/unitok-4.0.tar.gz" -C "$WORKDIR"
-```
 
 Apply Unicode normalization and split the text into tokens:
 
@@ -127,12 +122,13 @@ python "$WORKDIR/unitok-4.0/uninorm.py" < "$RAW_TEXT" | \
         "$WORKDIR/unitok-4.0/configs/czech.py" > "$TOKENIZED_VERT"
 ```
 
-For a simpler workflow, you can likelycontinue with the `word`
+For a simpler workflow, you can continue with the `word`
 attribute. This is often acceptable for languages with relatively simple
 morphology. For richer morphology, it will be better to add lemmatization
 and before training the sense model, e.g. with TreeTagger.
 
 ## Optional: Deduplicate
+Remove duplicate paragraphs present in the vertical text.
 
 ```bash
 onion < "$TOKENIZED_VERT" > "$DEDUP_VERT"
@@ -282,7 +278,7 @@ The output file now contains the ranked list of trending senses.
 Filter the ranking:
 
 ```bash
-python scripts/filter_trends_tsv.py \
+scripts/filter_trends_tsv.py \
     --input "$WORKDIR/trends.tsv" \
     --output "$WORKDIR/filtered.tsv" \
     --max-rank 30000 --max-p 0.01 --min-slope 0.01 \
@@ -310,4 +306,3 @@ python name_senses_llm.py "$WORKDIR/concordances.tsv" \
 ```
 
 `name_senses_llm.py` requires `OPENROUTER_API_KEY` to be set for LLM access using [OpenRouter](https://openrouter.ai)
-
