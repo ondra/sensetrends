@@ -1,13 +1,10 @@
 # SenseTrends Pipeline Example
 
-This document mirrors the structure of the first appendix of the thesis
-[*Automatic Detection of Word Sense Shift*](https://is.muni.cz/auth/th/tlymm/),
-but uses the current command-line syntax verified in this repository.
+This page provides a specific example of how a trending sense detection pipeline based on corpora crawled from RSS feeds might look like. The structure corresponds to the first appendix of my thesis [_Automatic Detection of Word Sense Shift_](https://is.muni.cz/auth/th/tlymm/), with some additional details and fixes.
 
-The workflow starts with a list of web feed URLs and ends with a ranked list of
-trending senses. The early steps show a minimal live crawl. The later steps use
-the same commands on a compiled diachronic corpus and AdaGram model. Concrete
-local stand-ins used on this machine are noted in `Agents.md`.
+
+The initial starting point is a list of web feed URLs and the end result is a ranked list of
+trending senses.
 
 ## Prerequisites
 
@@ -96,16 +93,7 @@ update "$PLANFILE" "$FEEDS_FILE" --time-limit 3600
 fetch "$PLANFILE" "$OUT_PREFIX" --time-limit 3600
 ```
 
-Current positional syntax:
-
-- `update PLANFILE FEEDS`
-- `fetch PLANFILE OUT_PREFIX`
-
-Expected artifact:
-
-```text
-$OUT_PREFIX.jsonl
-```
+Run this periodically until you build a large enough corpus.
 
 ## Extract Text
 
@@ -121,15 +109,9 @@ python "$FEED_FETCHER_REPO/util/dump.py" \
 If your local jusText install uses different stoplist names, use
 `--wordlist_file` instead of `--wordlist_lang`.
 
-Expected artifact:
-
-```text
-$RAW_TEXT
-```
-
 ## Normalize and Tokenize the Text
 
-Download and unpack the `corpus.tools` `unitok` bundle if needed:
+Download and unpack `unitok` from [Corpus Tools](https://corpus.tools) if needed:
 
 ```bash
 curl -fsSL https://corpus.tools/raw-attachment/wiki/Downloads/unitok-4.0.tar.gz \
@@ -137,7 +119,7 @@ curl -fsSL https://corpus.tools/raw-attachment/wiki/Downloads/unitok-4.0.tar.gz 
 tar -xzf "$WORKDIR/unitok-4.0.tar.gz" -C "$WORKDIR"
 ```
 
-Normalize and tokenize:
+Apply Unicode normalization and split the text into tokens:
 
 ```bash
 python "$WORKDIR/unitok-4.0/uninorm.py" < "$RAW_TEXT" | \
@@ -145,16 +127,10 @@ python "$WORKDIR/unitok-4.0/uninorm.py" < "$RAW_TEXT" | \
         "$WORKDIR/unitok-4.0/configs/czech.py" > "$TOKENIZED_VERT"
 ```
 
-Expected artifact:
-
-```text
-$TOKENIZED_VERT
-```
-
-For a self-contained workflow, you can continue from here with the `word`
+For a simpler workflow, you can likelycontinue with the `word`
 attribute. This is often acceptable for languages with relatively simple
-morphology. For richer morphology, it is usually better to add lemmatization
-and PoS tagging before training the sense model.
+morphology. For richer morphology, it will be better to add lemmatization
+and before training the sense model, e.g. with TreeTagger.
 
 ## Optional: Deduplicate
 
@@ -236,7 +212,9 @@ mkdynattr "$CORPUS" doc.month
 mktokencov "$CORPUS"
 ```
 
-The trend estimation below uses `doc.month` as the diachronic attribute.
+The tools provided by the `corp` crate are not as automated compared to `manatee`, but this allows for skipping some of the work to increase compilation speed. Only the `mkrev` commands are not strictly necessary for the trending sense detectnion, but they allow for easier inspection of the corpus.
+
+The trend estimation below uses `doc.month` as the diachronic attribute. The methods have useful statistical power when there are 10+ epochs, so it might be better to use a different granularity for your particular corpus.
 
 ## Train the AdaGram Model
 
@@ -247,33 +225,22 @@ learn "$CORPUS" word "$MODEL" \
     --dim 64 --alpha 0.1 --window 10 --epochs 1 --prototypes 10 --threads 16
 ```
 
-Current positional syntax:
-
-```text
-learn CORPUS POSATTR MODEL
-```
-
-If you upgraded the corpus with lemmatization, replace `word` with `lempos`.
-If you are continuing from an existing local corpus and model instead of the
-small live crawl above, point `CORPUS` and `MODEL` at those existing paths and
-match the attribute to the existing model.
+If your corpus has lemmatization, replace `word` with a lemmatized attribute.
 
 ## Prepare the List of Target Headwords
 
-`lswl` emits `headword<TAB>frequency`, so split it into two files:
+Obtain the list of top headwords by frequency. `lswl` emits `headword<TAB>frequency`, use only the first column.
 
 ```bash
 lswl -l 100000 "$CORPUS" word > "$WORKDIR/headwords_with_freqs.tsv"
 cut -f1 "$WORKDIR/headwords_with_freqs.tsv" > "$WORKDIR/headwords.txt"
 ```
 
-For a faster first pass:
-
-```bash
-head -n 5000 "$WORKDIR/headwords.txt" > "$WORKDIR/headwords.top5000.txt"
-```
+You might need to decrease the cutoff specified by the `-l` parameter if your corpus is smaller/noisier, but this can also be done during subsequent steps.
 
 ## Compute Sense Frequencies
+
+In this step, the diachronic frequencies of the word senses are calculated.
 
 ```bash
 sensefreqs "$CORPUS" word doc.month "$MODEL" \
@@ -285,6 +252,8 @@ Expected TSV columns:
 ```text
 hw    epoch    s0    s1    ...    norm
 ```
+
+Use the `--distrib` parameter to use soft-assignment of the word senses.
 
 ## Rank Trends
 

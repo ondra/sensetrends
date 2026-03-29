@@ -2,7 +2,7 @@
 
 Detect trending word senses in diachronic corpora.
 
-The broader context is described in the thesis [Automatic Detection of Word Sense Shift](https://is.muni.cz/auth/th/tlymm/) and in the paper cited below. The basic idea is:
+The broader context is described in the thesis [_Automatic Detection of Word Sense Shift_](https://is.muni.cz/auth/th/tlymm/) and in the paper cited below. The basic idea is:
 
 1. build a diachronic corpus with reliable timestamps
 2. train an Adaptive Skip-gram model that induces multiple senses per headword
@@ -13,15 +13,15 @@ Given a corpus and a trained [Adaptive Skip-gram](https://github.com/ondra/adagr
 
 The thesis appendix contains the same overall pipeline, but some appendix command lines use older CLI syntax. The commands in this repository match the current binaries and scripts here.
 
-For a concrete walkthrough, see [EXAMPLE.md](EXAMPLE.md). It starts from a live Czech feed crawl and then continues with a real Czech diachronic corpus and model for the ranking steps.
+For a concrete walkthrough, see [EXAMPLE.md](EXAMPLE.md).
 
 ## What Is In This Repository
 
 This repository is the top layer of the trending sense detection pipeline. It contains:
 
 - Python code for trend computation, filtering, and plotting
-- bundled static Linux/x86_64 binaries in `bin/` for key tools
-- bundled Python extension modules: `slope.so`, `adagram.so`
+- bundled static Linux/x86_64 binaries in `bin/` for the tools which need compilation
+- prebuilt Python extension modules: `slope.so`, `adagram.so`
 
 The main components developed to achieve the goals of the thesis are:
 
