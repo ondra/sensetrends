@@ -53,13 +53,9 @@ The examples below use unqualified command names of the tools. You can install t
 export PATH="$PWD/bin/feed_fetcher:$PWD/bin/corp:$PWD/bin/adagram:$PWD/bin/onion:$PATH"
 ```
 
-If you continue from an existing local corpus and model instead of building
-your own from the small live crawl, set `CORPUS` and `MODEL` to those existing
-paths. Concrete local examples are listed in `Agents.md`.
+## Input Data
 
-## Data
-
-Create a minimal feed list:
+Create a list of feeds. Atom, RSS, JSONFeed formats are supported:
 
 ```bash
 mkdir -p out
@@ -100,9 +96,9 @@ If your local jusText install uses different stoplist names, use
 Apply Unicode normalization and split the text into tokens:
 
 ```bash
-python tmp/unitok-4.0/uninorm.py < raw_text.txt | \
-    python tmp/unitok-4.0/unitok.py \
-        tmp/unitok-4.0/configs/english.py > tokenized.vert
+python unitok-4.0/uninorm.py < raw_text.txt | \
+    python unitok-4.0/unitok.py \
+        unitok-4.0/configs/english.py > tokenized.vert
 ```
 
 ## Optional: Deduplicate
@@ -113,12 +109,7 @@ onion < tokenized.vert > deduplicated.vert
 cp deduplicated.vert corpus_input.vert
 ```
 
-If you skip this step, use `tokenized.vert` as the input for the later
-corpus-compilation step instead:
-
-```bash
-cp tokenized.vert corpus_input.vert
-```
+If you skip this step, use `tokenized.vert` as the input for the later corpus compilation step.
 
 ## Optional: Tag and Lemmatize
 
@@ -131,7 +122,7 @@ The following steps use `word` to stay self-contained. If you have a tagger / le
 Create a corpus configuration file, e.g. `corpus.conf`:
 
 ```bash
-PATH "./data"
+PATH "./compiled_corpus"
 VERTICAL "./corpus_input.vert"
 ATTRIBUTE word
 ATTRIBUTE lc {
