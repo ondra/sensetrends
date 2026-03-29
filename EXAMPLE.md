@@ -1,13 +1,13 @@
 # SenseTrends Pipeline Example
 
-This document describes an example of the complete workflow for trending sense detection from web corpora, the same as the first appendix of my thesis ([Automatic Detection of Word Sense Shift](https://is.muni.cz/auth/th/tlymm/)) with some small fixes.
+This document mirrors the structure of the first appendix of the thesis
+[*Automatic Detection of Word Sense Shift*](https://is.muni.cz/auth/th/tlymm/),
+but uses the current command-line syntax verified in this repository.
 
-The example has two connected parts:
-
-- a live Czech feed crawl and preprocessing run using
-  `https://www.ceskenoviny.cz/sluzby/rss/zpravy.php`
-- a continuation on an existing Czech diachronic corpus and AdaGram model to
-  compute sense frequencies, rank trends, and inspect the results
+The workflow starts with a list of web feed URLs and ends with a ranked list of
+trending senses. The early steps show a minimal live crawl. The later steps use
+the same commands on a compiled diachronic corpus and AdaGram model. Concrete
+local stand-ins used on this machine are noted in `Agents.md`.
 
 ## Prerequisites
 
@@ -26,11 +26,11 @@ Run the Python scripts from the repository root so they can import the bundled
 
 ### 2. Command availability
 
-The examples below use installed command names such as `update`, `fetch`,
-`encodevert`, `lswl`, `learn`, `sensefreqs`, `nearest`, and `senseconc`.
+The examples below use command names such as `update`, `fetch`, `encodevert`,
+`mkdynattr`, `mktokencov`, `lswl`, `learn`, `sensefreqs`, `nearest`, and
+`senseconc`.
 
-If those commands are not installed globally, you can use the binaries bundled
-in this checkout by exporting `PATH` once:
+If those commands are not installed globally, use the bundled binaries:
 
 ```bash
 export PATH="$PWD/bin/feed_fetcher:$PWD/bin/corp:$PWD/bin/adagram:$PWD/bin/onion:$PATH"
@@ -44,8 +44,7 @@ For the raw-web stages you still need:
 - `jusText`
 - `uninorm`
 - `unitok`
-- a Czech lemmatizer / PoS tagger if you want to compile your own corpus from
-  the freshly fetched material
+- optionally, a lemmatizer / PoS tagger for the target language
 
 Set this to your local `feed_fetcher` checkout:
 
@@ -53,53 +52,70 @@ Set this to your local `feed_fetcher` checkout:
 export FEED_FETCHER_REPO=/path/to/feed_fetcher
 ```
 
-## Part 1: Crawl and Preprocess a Live Czech Feed
+### 4. Working variables
 
-### 1. Create a work directory
-
-```bash
-mkdir -p smoke-cs-feed/out
-cd smoke-cs-feed
-printf '%s\n' 'https://www.ceskenoviny.cz/sluzby/rss/zpravy.php' > feeds.txt
-touch plan.tsv
-```
-
-### 2. Update the plan and fetch pages
+Set the paths you will use during the walkthrough:
 
 ```bash
-update plan.tsv feeds.txt --time-limit 3600
-fetch plan.tsv out/pages --time-limit 3600
+export WORKDIR="$PWD/example-workflow"
+export FEEDS_FILE="$WORKDIR/feeds.txt"
+export PLANFILE="$WORKDIR/plan.tsv"
+export OUT_PREFIX="$WORKDIR/out/pages"
+export RAW_TEXT="$WORKDIR/raw_text.txt"
+export TOKENIZED_VERT="$WORKDIR/tokenized.vert"
+export DEDUP_VERT="$WORKDIR/deduplicated.vert"
+export CORPUS_INPUT_VERT="$WORKDIR/corpus_input.vert"
+export CORPUS="$WORKDIR/corpus.conf"
+export MODEL="$WORKDIR/model.adagram"
 ```
 
-Expected artifact:
+If you continue from an existing local corpus and model instead of building
+your own from the small live crawl, set `CORPUS` and `MODEL` to those existing
+paths. Concrete local examples are listed in `Agents.md`.
 
-```text
-out/pages.jsonl
+## Data
+
+Create a minimal feed list:
+
+```bash
+mkdir -p "$WORKDIR/out"
+cat > "$FEEDS_FILE" <<'EOF'
+https://example.invalid/feed.xml
+EOF
+touch "$PLANFILE"
 ```
 
-The current CLIs are positional:
+Replace the placeholder URL with one or more real RSS/Atom feed URLs.
+
+## Crawl Web Feeds
+
+Update the processing plan and fetch pages:
+
+```bash
+update "$PLANFILE" "$FEEDS_FILE" --time-limit 3600
+fetch "$PLANFILE" "$OUT_PREFIX" --time-limit 3600
+```
+
+Current positional syntax:
 
 - `update PLANFILE FEEDS`
 - `fetch PLANFILE OUT_PREFIX`
 
-### 3. Extract Czech text
+Expected artifact:
 
-If you want to keep the extractor dependencies separate, create a helper
-environment and install the `corpus.tools` `jusText` build:
-
-```bash
-python -m venv .venv-dump
-source .venv-dump/bin/activate
-pip install requests \
-    https://corpus.tools/raw-attachment/wiki/Downloads/justext-5.0.tar.gz
+```text
+$OUT_PREFIX.jsonl
 ```
 
-Run the extractor from your local `feed_fetcher` checkout:
+## Extract Text
+
+The fetched data are raw web pages in JSON Lines format. Extract the salient
+text with `dump.py` and `jusText`:
 
 ```bash
 python "$FEED_FETCHER_REPO/util/dump.py" \
     --wordlist_lang Czech \
-    out/pages.jsonl > raw_text.txt
+    "$OUT_PREFIX.jsonl" > "$RAW_TEXT"
 ```
 
 If your local jusText install uses different stoplist names, use
@@ -108,101 +124,160 @@ If your local jusText install uses different stoplist names, use
 Expected artifact:
 
 ```text
-raw_text.txt
+$RAW_TEXT
 ```
 
-The file should contain `<doc ...>` blocks with metadata such as `title`,
-`url`, `feed`, `date`, `seen`, and `downloaded`, followed by extracted
-paragraphs.
-
-### 4. Normalize and tokenize
+## Normalize and Tokenize the Text
 
 Download and unpack the `corpus.tools` `unitok` bundle if needed:
 
 ```bash
 curl -fsSL https://corpus.tools/raw-attachment/wiki/Downloads/unitok-4.0.tar.gz \
-    -o unitok-4.0.tar.gz
-tar -xzf unitok-4.0.tar.gz
+    -o "$WORKDIR/unitok-4.0.tar.gz"
+tar -xzf "$WORKDIR/unitok-4.0.tar.gz" -C "$WORKDIR"
 ```
+
+Normalize and tokenize:
 
 ```bash
-python unitok-4.0/uninorm.py < raw_text.txt | \
-    python unitok-4.0/unitok.py unitok-4.0/configs/czech.py > tokenized.vert
+python "$WORKDIR/unitok-4.0/uninorm.py" < "$RAW_TEXT" | \
+    python "$WORKDIR/unitok-4.0/unitok.py" \
+        "$WORKDIR/unitok-4.0/configs/czech.py" > "$TOKENIZED_VERT"
 ```
 
-Expected output produced:
+Expected artifact:
 
 ```text
-tokenized.vert
+$TOKENIZED_VERT
 ```
 
-### 5. Deduplicate
+For a self-contained workflow, you can continue from here with the `word`
+attribute. This is often acceptable for languages with relatively simple
+morphology. For richer morphology, it is usually better to add lemmatization
+and PoS tagging before training the sense model.
+
+## Optional: Deduplicate
 
 ```bash
-onion < tokenized.vert > deduplicated.vert
+onion < "$TOKENIZED_VERT" > "$DEDUP_VERT"
+cp "$DEDUP_VERT" "$CORPUS_INPUT_VERT"
 ```
 
-### 6. Lemmatize and PoS-tag
-
-Use a Czech tagger so each token line contains at least:
-
-- `word`
-- `lempos`
-
-At that point you are ready either to compile your own diachronic corpus over
-time or to continue with an existing Czech corpus and model.
-
-## Part 2: Continue on a Real Czech Diachronic Corpus
-
-The following commands use an already compiled Czech corpus and an already
-trained AdaGram model that are present on this machine:
+If you skip this step, use `"$TOKENIZED_VERT"` as the input for the later
+corpus-compilation step instead:
 
 ```bash
-export CORPUS=/mnt/data/ondra/registry/trends_cs_first_20260208
-export MODEL=models/trends_cs_first_20260208.lempos.e1.d64.w10.a1.p10
+cp "$TOKENIZED_VERT" "$CORPUS_INPUT_VERT"
 ```
 
-This corpus already exposes monthly bins, so the diachronic attribute used
-below is `doc.month`.
+## Optional: Tag and Lemmatize
 
-### 7. Prepare the headword list
+The main walkthrough below stays self-contained by using `word`. If you have a
+tagger / lemmatizer available, this is the place to use it.
+
+For better results, especially for morphologically richer languages such as
+Czech:
+
+- add a `lempos` column to the vertical file
+- extend the corpus config with `ATTRIBUTE lempos`
+- replace `word` with `lempos` in `learn`, `lswl`, `sensefreqs`, and `senseconc`
+
+If you do not have a tagger, keep the workflow on `word`.
+
+## Compile Corpus
+
+Create `corpus.conf`:
+
+```bash
+cat > "$CORPUS" <<'EOF'
+PATH "./data"
+VERTICAL "./corpus_input.vert"
+DEFAULTATTR word
+ATTRIBUTE word
+ATTRIBUTE lc {
+    DYNLIB internal
+    DYNTYPE freq
+    DYNAMIC utf8lowercase
+    FROMATTR word
+}
+STRUCTURE p
+STRUCTURE g
+STRUCTURE doc {
+    ATTRIBUTE date
+    ATTRIBUTE month {
+        DYNLIB pipe
+        FROMATTR date
+        DYNAMIC 'cut -b1-7'
+        DYNTYPE freq
+    }
+    ATTRIBUTE feed
+    ATTRIBUTE url
+}
+EOF
+```
+
+Compile the corpus with Manatee tools:
+
+```bash
+encodevert -c "$CORPUS"
+mktokencov "$CORPUS"
+```
+
+or, compile the corpus using the tools provided by the `corp` crate:
+
+```bash
+encodevert -c "$CORPUS"
+mkrev "$CORPUS" word
+mkrev "$CORPUS" doc.date
+mkrev "$CORPUS" doc.feed
+mkrev "$CORPUS" doc.url
+mkdynattr "$CORPUS" lc
+mkdynattr "$CORPUS" doc.month
+mktokencov "$CORPUS"
+```
+
+The trend estimation below uses `doc.month` as the diachronic attribute.
+
+## Train the AdaGram Model
+
+Train the model on the compiled corpus:
+
+```bash
+learn "$CORPUS" word "$MODEL" \
+    --dim 64 --alpha 0.1 --window 10 --epochs 1 --prototypes 10 --threads 16
+```
+
+Current positional syntax:
+
+```text
+learn CORPUS POSATTR MODEL
+```
+
+If you upgraded the corpus with lemmatization, replace `word` with `lempos`.
+If you are continuing from an existing local corpus and model instead of the
+small live crawl above, point `CORPUS` and `MODEL` at those existing paths and
+match the attribute to the existing model.
+
+## Prepare the List of Target Headwords
 
 `lswl` emits `headword<TAB>frequency`, so split it into two files:
 
 ```bash
-lswl -l 100000 "$CORPUS" lempos > headwords_with_freqs.tsv
-cut -f1 headwords_with_freqs.tsv > headwords.txt
+lswl -l 100000 "$CORPUS" word > "$WORKDIR/headwords_with_freqs.tsv"
+cut -f1 "$WORKDIR/headwords_with_freqs.tsv" > "$WORKDIR/headwords.txt"
 ```
 
-For a faster first pass, you can limit the list:
+For a faster first pass:
 
 ```bash
-head -n 5000 headwords.txt > headwords.top5000.txt
+head -n 5000 "$WORKDIR/headwords.txt" > "$WORKDIR/headwords.top5000.txt"
 ```
 
-### 8. Train a model if you need your own
-
-If you are building your own corpus rather than reusing the existing model, the
-current `learn` CLI is:
+## Compute Sense Frequencies
 
 ```bash
-learn corpus.conf lempos model.adagram \
-    --dim 64 --alpha 0.1 --window 10 --epochs 1 --prototypes 10
-```
-
-For the rest of this example we reuse the existing Czech model in `$MODEL`.
-
-### 9. Compute sense frequencies
-
-```bash
-sensefreqs "$CORPUS" lempos doc.month "$MODEL" \
-    --nthreads 16 < headwords.top5000.txt > sensed.tsv
-```
-
-Current argument order:
-
-```text
-sensefreqs CORPUS POSATTR DIAATTR MODEL
+sensefreqs "$CORPUS" word doc.month "$MODEL" \
+    --nthreads 16 < "$WORKDIR/headwords.top5000.txt" > "$WORKDIR/sensed.tsv"
 ```
 
 Expected TSV columns:
@@ -211,10 +286,13 @@ Expected TSV columns:
 hw    epoch    s0    s1    ...    norm
 ```
 
-### 10. Rank trends
+## Rank Trends
+
+Apply trend estimation to the sense frequency distributions:
 
 ```bash
-python rank_trends.py sensed.tsv --method mk --norm en --out trends.tsv
+python rank_trends.py "$WORKDIR/sensed.tsv" \
+    --method mk --norm en --out "$WORKDIR/trends.tsv"
 ```
 
 Supported methods:
@@ -228,86 +306,39 @@ Supported normalizations:
 - `gn`: global-normalized
 - `sr`: sense-relative
 
-### 11. Filter the ranking
+The output file now contains the ranked list of trending senses.
+
+## Optional: Filter and Inspect Results
+
+Filter the ranking:
 
 ```bash
 python scripts/filter_trends_tsv.py \
-    --input trends.tsv --output filtered.tsv \
+    --input "$WORKDIR/trends.tsv" \
+    --output "$WORKDIR/filtered.tsv" \
     --max-rank 30000 --max-p 0.01 --min-slope 0.01 \
     --pattern '.*'
 ```
 
-### 12. Inspect a candidate headword
-
-Nearest neighbors:
+Inspect a candidate headword with nearest neighbors:
 
 ```bash
-echo "banka-n" | nearest "$MODEL" --compact
+echo "banka" | nearest "$MODEL" --compact
 ```
 
-Sense concordances:
+Inspect representative concordances:
 
 ```bash
-echo "banka-n" | senseconc "$CORPUS" lempos word "$MODEL"
+echo "banka" | senseconc "$CORPUS" word word "$MODEL" \
+    > "$WORKDIR/concordances.tsv"
 ```
 
-Sense naming with an LLM:
+Generate sense names with an LLM:
 
 ```bash
-python name_senses_llm.py concordances.tsv > sense_names.tsv
+python name_senses_llm.py "$WORKDIR/concordances.tsv" \
+    > "$WORKDIR/sense_names.tsv"
 ```
 
-`name_senses_llm.py` requires `OPENROUTER_API_KEY`.
+`name_senses_llm.py` requires `OPENROUTER_API_KEY` to be set for LLM access using [OpenRouter](https://openrouter.ai)
 
-## Optional: Compile Your Own Corpus
-
-If you want to continue from the freshly fetched Czech material instead of
-switching to the existing corpus above, the minimal corpus-compilation shape is:
-
-```ini
-PATH "./data"
-VERTICAL "./lemmatized.vert"
-DEFAULTATTR word
-ATTRIBUTE word
-ATTRIBUTE lempos
-ATTRIBUTE lc {
-    DYNLIB internal
-    DYNTYPE freq
-    DYNAMIC utf8lowercase
-    FROMATTR word
-}
-STRUCTURE p
-STRUCTURE g
-STRUCTURE doc {
-    ATTRIBUTE date
-    ATTRIBUTE feed
-    ATTRIBUTE url
-}
-```
-
-Then compile it with:
-
-```bash
-encodevert -c ./corpus.conf
-mkdynattr ./corpus.conf lc
-mktokencov ./corpus.conf
-```
-
-If your corpus later exposes monthly bins such as `doc.month`, use that in the
-trend steps. Otherwise start with `doc.date`.
-
-## Python API
-
-```python
-import slope
-import adagram
-
-# Trend estimation
-slope.mk([0, 1, 2, 3], [10, 12, 15, 18])         # (slope, p_value)
-slope.linreg([0, 1, 2, 3], [10, 12, 15, 18])     # (slope, p_value)
-
-# Model queries
-model = adagram.Model("model.adagram")
-model.nearest_all("bank-n", num_neighbors=5, min_freq=100)
-model.desamb("bank-n", ["central-j", "rate-n"])
-```
