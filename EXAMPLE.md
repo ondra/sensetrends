@@ -53,23 +53,6 @@ The examples below use unqualified command names of the tools. You can install t
 export PATH="$PWD/bin/feed_fetcher:$PWD/bin/corp:$PWD/bin/adagram:$PWD/bin/onion:$PATH"
 ```
 
-### 4. Working variables
-
-Set the paths you will use during the walkthrough:
-
-```bash
-export WORKDIR="$PWD/example-workflow"
-export FEEDS_FILE="$WORKDIR/feeds.txt"
-export PLANFILE="$WORKDIR/plan.tsv"
-export OUT_PREFIX="$WORKDIR/out/pages"
-export RAW_TEXT="$WORKDIR/raw_text.txt"
-export TOKENIZED_VERT="$WORKDIR/tokenized.vert"
-export DEDUP_VERT="$WORKDIR/deduplicated.vert"
-export CORPUS_INPUT_VERT="$WORKDIR/corpus_input.vert"
-export CORPUS="$WORKDIR/corpus.conf"
-export MODEL="$WORKDIR/model.adagram"
-```
-
 If you continue from an existing local corpus and model instead of building
 your own from the small live crawl, set `CORPUS` and `MODEL` to those existing
 paths. Concrete local examples are listed in `Agents.md`.
@@ -79,11 +62,11 @@ paths. Concrete local examples are listed in `Agents.md`.
 Create a minimal feed list:
 
 ```bash
-mkdir -p "$WORKDIR/out"
-cat > "$FEEDS_FILE" <<'EOF'
+mkdir -p out
+cat > feeds.txt <<'EOF'
 https://example.invalid/feed.xml
 EOF
-touch "$PLANFILE"
+touch plan.tsv
 ```
 
 Replace the placeholder URL with one or more real RSS/Atom feed URLs.
@@ -93,8 +76,8 @@ Replace the placeholder URL with one or more real RSS/Atom feed URLs.
 Update the processing plan and fetch pages:
 
 ```bash
-update "$PLANFILE" "$FEEDS_FILE" --time-limit 3600
-fetch "$PLANFILE" "$OUT_PREFIX" --time-limit 3600
+update plan.tsv feeds.txt --time-limit 3600
+fetch plan.tsv out/pages --time-limit 3600
 ```
 
 Run this periodically until you build a large enough corpus.
@@ -106,7 +89,7 @@ text with `dump.py` and `jusText`:
 
 ```bash
 dump.py --wordlist_lang English \
-    "$OUT_PREFIX.jsonl" > "$RAW_TEXT"
+    out/pages.jsonl > raw_text.txt
 ```
 
 If your local jusText install uses different stoplist names, use
@@ -117,54 +100,39 @@ If your local jusText install uses different stoplist names, use
 Apply Unicode normalization and split the text into tokens:
 
 ```bash
-python "$WORKDIR/unitok-4.0/uninorm.py" < "$RAW_TEXT" | \
-    python "$WORKDIR/unitok-4.0/unitok.py" \
-        "$WORKDIR/unitok-4.0/configs/czech.py" > "$TOKENIZED_VERT"
+python tmp/unitok-4.0/uninorm.py < raw_text.txt | \
+    python tmp/unitok-4.0/unitok.py \
+        tmp/unitok-4.0/configs/english.py > tokenized.vert
 ```
-
-For a simpler workflow, you can continue with the `word`
-attribute. This is often acceptable for languages with relatively simple
-morphology. For richer morphology, it will be better to add lemmatization
-and before training the sense model, e.g. with TreeTagger.
 
 ## Optional: Deduplicate
 Remove duplicate paragraphs present in the vertical text.
 
 ```bash
-onion < "$TOKENIZED_VERT" > "$DEDUP_VERT"
-cp "$DEDUP_VERT" "$CORPUS_INPUT_VERT"
+onion < tokenized.vert > deduplicated.vert
+cp deduplicated.vert corpus_input.vert
 ```
 
-If you skip this step, use `"$TOKENIZED_VERT"` as the input for the later
+If you skip this step, use `tokenized.vert` as the input for the later
 corpus-compilation step instead:
 
 ```bash
-cp "$TOKENIZED_VERT" "$CORPUS_INPUT_VERT"
+cp tokenized.vert corpus_input.vert
 ```
 
 ## Optional: Tag and Lemmatize
 
-The main walkthrough below stays self-contained by using `word`. If you have a
-tagger / lemmatizer available, this is the place to use it.
+For a simpler workflow, you can continue with the `word` attribute. This is often acceptable for languages with relatively simple morphology. For richer morphology, it will be better to add lemmatization and before training the sense model, e.g. with TreeTagger.
 
-For better results, especially for morphologically richer languages such as
-Czech:
-
-- add a `lempos` column to the vertical file
-- extend the corpus config with `ATTRIBUTE lempos`
-- replace `word` with `lempos` in `learn`, `lswl`, `sensefreqs`, and `senseconc`
-
-If you do not have a tagger, keep the workflow on `word`.
+The following steps use `word` to stay self-contained. If you have a tagger / lemmatizer available, this is the place to use it; add another column in the vertical and extend the corpus configuration file accordingly. Then, use this attribute instead of `word` in the following steps.
 
 ## Compile Corpus
 
-Create `corpus.conf`:
+Create a corpus configuration file, e.g. `corpus.conf`:
 
 ```bash
-cat > "$CORPUS" <<'EOF'
 PATH "./data"
 VERTICAL "./corpus_input.vert"
-DEFAULTATTR word
 ATTRIBUTE word
 ATTRIBUTE lc {
     DYNLIB internal
@@ -185,30 +153,46 @@ STRUCTURE doc {
     ATTRIBUTE feed
     ATTRIBUTE url
 }
-EOF
 ```
+
+If your corpus is big, the positional attributes will need to use the MD\_MGD type, e.g.
+
+```bash
+ATTRIBUTE word {
+    TYPE MD_MGD
+}
+```
+
+and structures will need to use a wider storage type:
+
+```bash
+STRUCTURE p {
+    TYPE map64
+}
+```
+
 
 Compile the corpus with Manatee tools:
 
 ```bash
-encodevert -c "$CORPUS"
-mktokencov "$CORPUS"
+encodevert -c corpus.conf
+mktokencov corpus.conf
 ```
 
 or, compile the corpus using the tools provided by the `corp` crate:
 
 ```bash
-encodevert -c "$CORPUS"
-mkrev "$CORPUS" word
-mkrev "$CORPUS" doc.date
-mkrev "$CORPUS" doc.feed
-mkrev "$CORPUS" doc.url
-mkdynattr "$CORPUS" lc
-mkdynattr "$CORPUS" doc.month
-mktokencov "$CORPUS"
+encodevert -c corpus.conf
+mkrev corpus.conf word
+mkrev corpus.conf doc.date
+mkrev corpus.conf doc.feed
+mkrev corpus.conf doc.url
+mkdynattr corpus.conf lc
+mkdynattr corpus.conf doc.month
+mktokencov corpus.conf
 ```
 
-The tools provided by the `corp` crate are not as automated compared to `manatee`, but this allows for skipping some of the work to increase compilation speed. Only the `mkrev` commands are not strictly necessary for the trending sense detectnion, but they allow for easier inspection of the corpus.
+The tools provided by the `corp` crate are not as automated compared to `manatee`, but this allows for skipping some of the work to increase compilation speed. Only the `mkrev` commands are not strictly necessary for the trending sense detection, but they allow for easier inspection of the corpus.
 
 The trend estimation below uses `doc.month` as the diachronic attribute. The methods have useful statistical power when there are 10+ epochs, so it might be better to use a different granularity for your particular corpus.
 
@@ -217,7 +201,7 @@ The trend estimation below uses `doc.month` as the diachronic attribute. The met
 Train the model on the compiled corpus:
 
 ```bash
-learn "$CORPUS" word "$MODEL" \
+learn corpus.conf word model.adagram \
     --dim 64 --alpha 0.1 --window 10 --epochs 1 --prototypes 10 --threads 16
 ```
 
@@ -228,8 +212,8 @@ If your corpus has lemmatization, replace `word` with a lemmatized attribute.
 Obtain the list of top headwords by frequency. `lswl` emits `headword<TAB>frequency`, use only the first column.
 
 ```bash
-lswl -l 100000 "$CORPUS" word > "$WORKDIR/headwords_with_freqs.tsv"
-cut -f1 "$WORKDIR/headwords_with_freqs.tsv" > "$WORKDIR/headwords.txt"
+lswl -l 100000 corpus.conf word > headwords_with_freqs.tsv
+cut -f1 headwords_with_freqs.tsv > headwords.txt
 ```
 
 You might need to decrease the cutoff specified by the `-l` parameter if your corpus is smaller/noisier, but this can also be done during subsequent steps.
@@ -239,8 +223,8 @@ You might need to decrease the cutoff specified by the `-l` parameter if your co
 In this step, the diachronic frequencies of the word senses are calculated.
 
 ```bash
-sensefreqs "$CORPUS" word doc.month "$MODEL" \
-    --nthreads 16 < "$WORKDIR/headwords.top5000.txt" > "$WORKDIR/sensed.tsv"
+sensefreqs corpus.conf word doc.month model.adagram \
+    --nthreads 16 < headwords.txt > sensed.tsv
 ```
 
 Expected TSV columns:
@@ -256,8 +240,8 @@ Use the `--distrib` parameter to use soft-assignment of the word senses.
 Apply trend estimation to the sense frequency distributions:
 
 ```bash
-python rank_trends.py "$WORKDIR/sensed.tsv" \
-    --method mk --norm en --out "$WORKDIR/trends.tsv"
+python rank_trends.py sensed.tsv \
+    --method mk --norm en --out trends.tsv
 ```
 
 Supported methods:
@@ -278,9 +262,9 @@ The output file now contains the ranked list of trending senses.
 Filter the ranking:
 
 ```bash
-scripts/filter_trends_tsv.py \
-    --input "$WORKDIR/trends.tsv" \
-    --output "$WORKDIR/filtered.tsv" \
+python scripts/filter_trends_tsv.py \
+    --input trends.tsv \
+    --output filtered.tsv \
     --max-rank 30000 --max-p 0.01 --min-slope 0.01 \
     --pattern '.*'
 ```
@@ -288,21 +272,20 @@ scripts/filter_trends_tsv.py \
 Inspect a candidate headword with nearest neighbors:
 
 ```bash
-echo "banka" | nearest "$MODEL" --compact
+echo "bank" | nearest model.adagram --compact
 ```
 
 Inspect representative concordances:
 
 ```bash
-echo "banka" | senseconc "$CORPUS" word word "$MODEL" \
-    > "$WORKDIR/concordances.tsv"
+echo "bank" | senseconc corpus.conf word word model.adagram \
+    > concordances.tsv
 ```
 
 Generate sense names with an LLM:
 
 ```bash
-python name_senses_llm.py "$WORKDIR/concordances.tsv" \
-    > "$WORKDIR/sense_names.tsv"
+python name_senses_llm.py concordances.tsv > sense_names.tsv
 ```
 
 `name_senses_llm.py` requires `OPENROUTER_API_KEY` to be set for LLM access using [OpenRouter](https://openrouter.ai)
